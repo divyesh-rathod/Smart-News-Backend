@@ -1,6 +1,7 @@
 from app.db.models import *
 from typing import List, Optional, Tuple
 from datetime import datetime
+import sqlalchemy.exc
 from sqlalchemy import insert, update
 from sqlalchemy.orm import selectinload
 from sqlalchemy import select, desc, and_
@@ -11,29 +12,29 @@ from app.ml_models.retrieve import main
 from uuid import UUID
 
 
-async def mark_article_as_read(article_id:UUID,current_user:user)->str:
+async def mark_article_as_read(article_id: UUID, current_user: user) -> str:
     async with AsyncSessionLocal() as session:
+        # First, verify the article exists
         result = await session.execute(
             select(Article).where(Article.id == article_id)
         )
         article = result.scalar_one_or_none()
         if not article:
             raise ValueError("Article not found")
-        user_read_article = await session.execute(
-            select(UserRead).where(
-                UserRead.user_id == current_user.id,
-                UserRead.article_id == article_id
-            )
-        )
-        user_read = user_read_article.scalar_one_or_none()
-        if user_read:
-            return "Article already marked as read" 
-        new_user_read = UserRead(
+        
+        # Use PostgreSQL's ON CONFLICT DO NOTHING for atomic upsert
+        from sqlalchemy.dialects.postgresql import insert
+        
+        stmt = insert(UserRead).values(
             user_id=current_user.id,
             article_id=article_id
-        )   
-        session.add(new_user_read)
-        await session.commit()      
+        )
+        # If the record already exists, do nothing (no error thrown)
+        stmt = stmt.on_conflict_do_nothing(index_elements=['user_id', 'article_id'])
+        
+        await session.execute(stmt)
+        await session.commit()
+        
         return "Article marked as read successfully"
       
 async def get_unseen_processed_articles_for_user(

@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import load_only
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import AsyncSessionLocal
-from app.db.models.processed_article import ProcessedArticle
+from app.db.models.processed_article import ProcessedArticle, Article
 from app.ml_models.rerank import rerank_top_k
 
 async def get_top_50_cosine_similar_articles(
@@ -38,7 +38,13 @@ async def get_top_50_cosine_similar_articles(
 
     # 3) Query for nearest 50 (excluding the source)
     stmt = (
-        select(ProcessedArticle, distance_expr)
+        select(
+            ProcessedArticle,
+            Article.title,
+            Article.link,
+            distance_expr
+        )
+        .join(Article, ProcessedArticle.article_id == Article.id)  
         .where(ProcessedArticle.article_id != article_id)
         .order_by(asc(distance_expr))
         .limit(50)

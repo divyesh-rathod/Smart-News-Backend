@@ -56,6 +56,8 @@ class UpdateLastReadRequest(BaseModel):
 
 class ArticleBase(BaseModel):
     article_id: UUID
+    title: str
+    link: str
     cleaned_text: str
     category_1: Optional[str] = None
     category_2: Optional[str] = None
