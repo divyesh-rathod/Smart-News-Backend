@@ -66,7 +66,7 @@ class ArticleScore(ArticleBase):
     score: float
 
     class Config:
-        orm_mode = True  # if you ever want to return ORM models directly
+        from_attributes = True  # if you ever want to return ORM models directly
 
 class ToggleLikeResponse(BaseModel):
     message: str

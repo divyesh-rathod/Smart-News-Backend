@@ -14,7 +14,7 @@ from app.ml_models.rerank import rerank_top_k
 async def get_top_50_cosine_similar_articles(
     session: AsyncSession,
     article_id: str
-) -> List[Tuple[ProcessedArticle, float]]:
+) -> List[Tuple[ProcessedArticle, str, str,float]]:
     """
     Return the 50 nearest neighbors by cosine distance (using pgvector's <-> operator).
     """
@@ -50,28 +50,49 @@ async def get_top_50_cosine_similar_articles(
         .limit(50)
     )
     results = await session.execute(stmt)
-    return results.all()
+    results = results.all()
+    if results:
+        print(f"DEBUG: First result format: {len(results[0])} values")
+        print(f"DEBUG: First result: {results[0]}")
+    return results
 
 
 async def main(article_id: str = None):
-    example_article_id = "fecf8133-412a-40ae-9462-f4e86308e843"
     async with AsyncSessionLocal() as session:
         # 1) Get top-50 by vector distance
         similar = await get_top_50_cosine_similar_articles(session, article_id)
-        candidates = [art for art, _ in similar]
+        print(f"DEBUG: Found {len(similar)} similar articles")
+        print(f"DEBUG: First similar article: {similar[0]}")
+        print("THis is Divyesh debugging")
+        candidates = [art_obj for art_obj, title, link, distance in similar]
 
         # 2) Rerank top-50 with cross-encoder
         #    Fetch the query text
     stmt = (
         select(ProcessedArticle)
         .options(load_only("article_id", "cleaned_text", "category_1", "category_2"))
-        .where(ProcessedArticle.article_id == example_article_id)
+        .where(ProcessedArticle.article_id == article_id)
     )
     result = await session.execute(stmt)
 
-    query_text = result.scalars().first() or ""
+    query_article = result.scalars().first()
+    if not query_article:
+            raise ValueError(f"Query article {article_id} not found")
+    query_text = query_article.cleaned_text or ""
+    detached_similar = []
+    for art_obj, title, link, distance in similar:
+            # Create plain dictionaries instead of ORM objects
+            detached_similar.append({
+                'article_id': str(art_obj.article_id),
+                'cleaned_text': art_obj.cleaned_text,
+                'category_1': art_obj.category_1,
+                'category_2': art_obj.category_2,
+                'title': title,
+                'link': link,
+                'distance': distance
+            })
 
-    top5 = await rerank_top_k(query_text, candidates, top_n=5)
+    top5 = await rerank_top_k(query_text, detached_similar, top_n=5)
 
     return top5, similar
 

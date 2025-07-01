@@ -124,15 +124,7 @@ async def toggle_article_like(
     current_user: User
 ) -> ToggleLikeResponse:
     async with AsyncSessionLocal() as session:
-        # 1) Ensure the article exists
-        # result = await session.execute(
-        #     select(Article).where(Article.id == article_id)
-        # )
-        # article = result.scalar_one_or_none()
-        # if not article:
-        #     raise ValueError("Article not found")
 
-        # 2) Check if a Like row already exists
         result = await session.execute(
             select(Like).where(
                 Like.article_id == article_id,
@@ -170,22 +162,52 @@ async def toggle_article_like(
             return "Article liked", True, top5, similar
         
 
-def serialize_article_scores(raw: list[tuple[ProcessedArticle, float]]) -> list[ArticleScore]:
+def serialize_article_scores(raw: list) -> list[ArticleScore]:
     """
-    Convert List[(ProcessedArticle, float)] into List[ArticleScore] (or dicts).
+    Convert query results into List[ArticleScore].
+    Handles both old format (ProcessedArticle, float) and new format with JOIN.
     """
     results: list[ArticleScore] = []
-    for art_obj, score in raw:
-        # We can either pass an ORM object and let Pydantic read .article_id etc.
-        results.append(ArticleScore(
-            article_id=art_obj.article_id,
-            cleaned_text=art_obj.cleaned_text,
-            category_1=art_obj.category_1,
-            category_2=art_obj.category_2,
-            score=score
-        ))
+    
+    for row in raw:
+        print(f"DEBUG: serialize_article_scores row format: {len(row)} values")  # 🔍 Debug
+        
+        if isinstance(row, dict):  # ✅ NEW: Handle dictionary format
+            results.append(ArticleScore(
+                article_id=row['article_id'],
+                cleaned_text=row['cleaned_text'],
+                category_1=row['category_1'],
+                category_2=row['category_2'],
+                title=row['title'],
+                link=row['link'],
+                score=row['score']
+            ))
+        elif len(row) == 4:  # Old format: (ProcessedArticle, title, link, score)
+            art_obj, title, link, score = row
+            results.append(ArticleScore(
+                article_id=art_obj.article_id,
+                cleaned_text=art_obj.cleaned_text,
+                category_1=art_obj.category_1,
+                category_2=art_obj.category_2,
+                title=title,
+                link=link,
+                score=score
+            ))
+        elif len(row) == 2:  # Old format: (ProcessedArticle, score)
+            art_obj, score = row
+            results.append(ArticleScore(
+                article_id=art_obj.article_id,
+                cleaned_text=art_obj.cleaned_text,
+                category_1=art_obj.category_1,
+                category_2=art_obj.category_2,
+                title="Unknown",
+                link="",
+                score=score
+            ))
+        else:
+            raise ValueError(f"Unexpected row format: {type(row)}")
+    
     return results
-
 
 def serialize_processed_articles(
     pa_list: List[ProcessedArticle]
