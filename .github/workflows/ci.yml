@@ -45,5 +45,10 @@ jobs:
         env:
           DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
 
+      # Fails if the models declare something (a column, an index) that no migration creates.
+      - run: alembic check
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+
       # Tests marked "model" download Hugging Face weights, so CI skips them.
       - run: pytest -m "not model"

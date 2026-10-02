@@ -3,7 +3,7 @@
 import logging
 from uuid import UUID
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, select, text
 
 from app.db.session import AsyncSessionLocal
 from app.db.models import Article, ProcessedArticle
@@ -12,6 +12,9 @@ from app.ml_models.rerank import rerank_top_k
 logger = logging.getLogger(__name__)
 
 STAGE1_LIMIT = 50
+# An HNSW index scan returns at most hnsw.ef_search rows (pgvector default 40), so this must exceed
+# STAGE1_LIMIT plus the excluded source row. Higher also means better recall and slower queries.
+HNSW_EF_SEARCH = 100
 
 
 def build_stage1_query(source_article_id: UUID, source_embedding) -> Select:
@@ -52,6 +55,7 @@ async def main(article_id: str) -> tuple[list[dict], list[dict]]:
             logger.info("Article %s has no embedding yet, so no recommendations", article_id)
             return [], []
 
+        await session.execute(text(f"SET LOCAL hnsw.ef_search = {HNSW_EF_SEARCH}"))
         result = await session.execute(build_stage1_query(source.article_id, source.embedding))
         candidates = [dict(row) for row in result.mappings()]
 

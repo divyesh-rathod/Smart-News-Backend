@@ -1,11 +1,35 @@
 import asyncio
 import math
+import os
 import uuid
 
 import pytest
+from sqlalchemy import text
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.pool import NullPool
 
+from app.db.session import AsyncSessionLocal
 from app.ml_models import retrieve
 from tests.factories import add_article, vector
+
+
+@pytest.fixture
+def index_scans_only(db):
+    """Make the planner use the HNSW index on a test-sized table, as it would on a large one."""
+    AsyncSessionLocal.configure(bind=create_async_engine(
+        os.environ["TEST_DATABASE_URL"],
+        poolclass=NullPool,
+        connect_args={"server_settings": {"enable_seqscan": "off", "enable_sort": "off"}},
+    ))
+
+
+async def stage1_plan(source_id: uuid.UUID, embedding: list[float]) -> str:
+    stmt = retrieve.build_stage1_query(source_id, embedding)
+    sql = stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True})
+    async with AsyncSessionLocal() as session:
+        rows = await session.execute(text(f"EXPLAIN {sql}"))
+        return "\n".join(row[0] for row in rows)
 
 
 def ids(rows: list[dict]) -> list[uuid.UUID]:
@@ -63,6 +87,21 @@ def test_stage1_keeps_the_50_nearest_and_stage2_returns_5(db, fake_rerank):
     assert len(similar) == 50
     assert [row["cleaned_text"] for row in similar] == [f"candidate {i}" for i in range(50)]
     assert len(top5) == 5
+
+
+def test_the_hnsw_index_serves_stage1_and_still_returns_50_neighbours(index_scans_only, fake_rerank):
+    async def seed():
+        source = await add_article("source", vector(1, 0))
+        for i in range(55):
+            await add_article(f"candidate {i}", vector(1, i / 10))
+        return source
+
+    source = asyncio.run(seed())
+
+    assert "ix_processed_articles_embedding_hnsw" in asyncio.run(stage1_plan(source, vector(1, 0)))
+    _, similar = asyncio.run(retrieve.main(str(source)))
+    # pgvector's default hnsw.ef_search (40) would cap an index scan at 40 rows.
+    assert [row["cleaned_text"] for row in similar] == [f"candidate {i}" for i in range(50)]
 
 
 @pytest.mark.parametrize("setup", ["no embedding yet", "not processed yet"])
