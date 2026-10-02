@@ -31,6 +31,11 @@ RSS_ENDPOINTS = [
     "business/retail"
 ]
 
+def create_client(transport: httpx.AsyncBaseTransport | None = None) -> httpx.AsyncClient:
+    # Some feeds redirect to an edition URL (business -> uk/business); httpx doesn't follow by default.
+    return httpx.AsyncClient(timeout=FETCH_TIMEOUT_SECONDS, follow_redirects=True, transport=transport)
+
+
 async def fetch_rss_feed(client: httpx.AsyncClient, url: str) -> BeautifulSoup:
     resp = await client.get(url)
     if resp.status_code == 200:
@@ -112,7 +117,7 @@ async def store_articles_in_db(articles: list[dict]) -> int:
     return inserted
 
 async def main():
-    async with httpx.AsyncClient(timeout=FETCH_TIMEOUT_SECONDS) as client:
+    async with create_client() as client:
         all_articles = await fetch_all_feeds(RSS_ENDPOINTS, client)
 
     await store_articles_in_db(all_articles)

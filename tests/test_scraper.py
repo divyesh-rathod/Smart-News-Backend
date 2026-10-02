@@ -79,13 +79,28 @@ def test_feeds_are_fetched_concurrently_up_to_the_cap_and_failed_feeds_are_skipp
             in_flight -= 1
 
     async def fetch():
-        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        async with scraper.create_client(httpx.MockTransport(handler)) as client:
             return await scraper.fetch_all_feeds(endpoints, client)
 
     articles = asyncio.run(fetch())
 
     assert sorted(a["title"] for a in articles) == sorted(f"feed-{i}" for i in range(20))
     assert peak == scraper.FETCH_CONCURRENCY
+
+
+def test_a_feed_that_redirects_to_an_edition_url_is_followed():
+    def handler(request):
+        if request.url.path == "/business/rss":
+            return httpx.Response(302, headers={"Location": "https://www.theguardian.com/uk/business/rss"})
+        if request.url.path == "/uk/business/rss":
+            return httpx.Response(200, text=feed_xml("uk/business"))
+        return httpx.Response(404)
+
+    async def fetch():
+        async with scraper.create_client(httpx.MockTransport(handler)) as client:
+            return await scraper.fetch_all_feeds(["business"], client)
+
+    assert [a["title"] for a in asyncio.run(fetch())] == ["uk/business"]
 
 
 def item(slug: str, pub_date: datetime | None = datetime(2026, 10, 1, tzinfo=timezone.utc)) -> dict:
