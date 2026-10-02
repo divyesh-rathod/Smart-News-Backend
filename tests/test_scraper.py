@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from bs4 import BeautifulSoup
 
-from app.scrapping.scraper import parse_rss_items
+from app.scrapping.scraper import RSS_ENDPOINTS, parse_rss_items
 
 RSS = """<?xml version="1.0" encoding="UTF-8"?>
 <rss><channel>
@@ -19,6 +19,12 @@ RSS = """<?xml version="1.0" encoding="UTF-8"?>
     <pubDate>not a date</pubDate>
   </item>
 </channel></rss>"""
+
+
+def test_each_feed_is_fetched_once():
+    duplicates = sorted({e for e in RSS_ENDPOINTS if RSS_ENDPOINTS.count(e) > 1})
+
+    assert duplicates == []
 
 
 def test_parse_rss_items_reads_each_field():

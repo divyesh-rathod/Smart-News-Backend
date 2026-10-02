@@ -21,7 +21,7 @@ RSS_ENDPOINTS = [
     "uk/travel","travel/usa","travel/europe","science","books","uk/film","games",
     "music/classical-music-and-opera","sport/cricket","uk/environment",
     "environment/climate-crisis","environment/wildlife","environment/energy",
-    "environment/pollution","global-development","tone/obituaries","uk/business",
+    "environment/pollution","tone/obituaries","uk/business",
     "business/economics","business/banking","uk/money","money/savings",
     "money/property","money/work-and-careers","money/debt","business/stock-markets",
     "business/series/project-syndicate-economists","uk/business-to-business",
