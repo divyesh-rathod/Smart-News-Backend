@@ -3,6 +3,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
     "model: downloads Hugging Face model weights (skipped in CI)",
+    "db: uses the db fixture, i.e. a migrated Postgres + pgvector database at TEST_DATABASE_URL (added automatically)",
 ]
 
 [tool.ruff]

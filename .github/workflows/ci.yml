@@ -7,6 +7,25 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: smart_news_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/smart_news_test
+
     steps:
       - uses: actions/checkout@v7
 
@@ -20,6 +39,11 @@ jobs:
       - run: pip install -r requirements-dev.txt --extra-index-url https://download.pytorch.org/whl/cpu
 
       - run: ruff check .
+
+      # Builds the schema for the DB tests, and proves the migrations run on an empty database.
+      - run: alembic upgrade head
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
 
       # Tests marked "model" download Hugging Face weights, so CI skips them.
       - run: pytest -m "not model"
