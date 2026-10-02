@@ -19,6 +19,8 @@ email-validator>=2.0.0
 # Authentication and Security
 PyJWT>=2.6.0
 passlib[bcrypt]>=1.7.4
+# passlib 1.7.4 cannot hash with bcrypt 5 (its self-test uses a password longer than 72 bytes).
+bcrypt==4.3.0
 
 # Machine Learning and NLP
 torch>=1.12.0
