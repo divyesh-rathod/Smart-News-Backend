@@ -1,7 +1,6 @@
 # app/scrapping/scraper.py
 
 import asyncio
-import csv
 
 import httpx
 from bs4 import BeautifulSoup
@@ -93,15 +92,6 @@ async def store_articles_in_db(articles: list[dict]):
             await session.rollback()
             print(f"Error storing articles: {e}")
 
-def write_articles_to_csv(articles: list[dict], csv_filename: str = "all_articles.csv"):
-    fieldnames = ["title", "link", "pub_date", "description", "categories"]
-    with open(csv_filename, mode="w", encoding="utf-8", newline="") as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writeheader()
-        for art in articles:
-            writer.writerow(art)
-    print(f"Data successfully written to {csv_filename}")
-
 async def main():
     all_articles: list[dict] = []
     for endpoint in RSS_ENDPOINTS:
@@ -112,9 +102,6 @@ async def main():
             print(f"Error fetching feed from {url}: {e}")
             continue
         all_articles.extend(parse_rss_items(soup))
-
-    # If you still want CSV output, uncomment:
-    # write_articles_to_csv(all_articles)
 
     await store_articles_in_db(all_articles)
 
