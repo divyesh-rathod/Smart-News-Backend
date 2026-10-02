@@ -6,9 +6,9 @@ from typing import List, Optional
 
 class UnseenArticlesQuery(BaseModel):
 
-    cursor: Optional[datetime] = Field(
+    cursor: Optional[str] = Field(
         None,
-        description="Fetch only articles with pub_date < this timestamp (RFC3339)."
+        description="next_cursor from the previous page. Omit it to start from the newest unread article."
     )
     limit: int = Field(
         20,
@@ -42,7 +42,7 @@ class UnseenProcessedArticle(BaseModel):
 class UnseenArticlesResponse(BaseModel):
   
     results:     List[UnseenProcessedArticle]
-    next_cursor: Optional[datetime] = None
+    next_cursor: Optional[str] = None  # opaque; None on the last page
 
 
 class UpdateLastReadRequest(BaseModel):

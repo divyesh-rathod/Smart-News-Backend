@@ -1,3 +1,4 @@
+import base64
 import logging
 from app.db.models import Article, Like, ProcessedArticle, User, UserFeedPosition, UserRead
 from typing import List
@@ -5,7 +6,7 @@ from datetime import datetime, timezone
 from sqlalchemy import update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import selectinload
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, func, tuple_
 from app.db.session import AsyncSessionLocal
 from app.schemas.news_schema import UnseenProcessedArticle, UnseenArticlesResponse, UnseenArticlesQuery, ArticleScore
 from app.ml_models.retrieve import main
@@ -39,24 +40,33 @@ async def mark_article_as_read(article_id: UUID, current_user: User) -> str:
         
         return "Article marked as read successfully"
       
+def encode_feed_cursor(article: Article) -> str:
+    """An opaque cursor for the position just after `article` in the feed's (pub_date, id) order."""
+    return base64.urlsafe_b64encode(f"{article.pub_date.isoformat()}|{article.id}".encode()).decode()
+
+
+def decode_feed_cursor(cursor: str) -> tuple[datetime, UUID]:
+    try:
+        pub_date, article_id = base64.urlsafe_b64decode(cursor.encode()).decode().split("|")
+        return datetime.fromisoformat(pub_date), UUID(article_id)
+    except ValueError as e:  # also covers binascii.Error and UnicodeDecodeError
+        raise ValueError("Invalid cursor: pass the next_cursor from the previous page") from e
+
+
 async def get_unseen_processed_articles_for_user(
     current_user: User,
     params: UnseenArticlesQuery
 ) -> UnseenArticlesResponse:
+    """
+    One page of the user's unread articles, newest first. Stateless keyset paging: without a cursor it
+    starts from the newest unread article (so a reload shows whatever is still unread), and next_cursor
+    continues after the last article of this page. Ordering by (pub_date, id) means articles published
+    at the same time are neither skipped nor repeated at a page boundary.
+    """
     async with AsyncSessionLocal() as session:
 
         PA, A, UR, L = ProcessedArticle, Article, UserRead, Like
 
-        # 1) Load or create the feed position row
-        feed_pos = await session.get(UserFeedPosition, current_user.id)
-        if not feed_pos:
-            feed_pos = UserFeedPosition(user_id=current_user.id, cursor=None)
-            session.add(feed_pos)
-            await session.flush()     # now it exists with cursor=None
-
-        current_cursor = feed_pos.cursor
-
-        # 2) Fetch the next batch of unread articles
         liked = (func.coalesce(L.is_liked, 0) == 1).label("liked")
         base_q = (
             select(PA, liked)
@@ -69,31 +79,18 @@ async def get_unseen_processed_articles_for_user(
             .where(UR.article_id.is_(None))
         )
 
-        if current_cursor is None:
-            base_q = base_q.order_by(A.pub_date.desc())
-        else:
-            base_q = base_q.where(A.pub_date < current_cursor)\
-                           .order_by(A.pub_date.desc())
+        if params.cursor is not None:
+            after_pub_date, after_id = decode_feed_cursor(params.cursor)
+            base_q = base_q.where(tuple_(A.pub_date, A.id) < tuple_(after_pub_date, after_id))
 
-        stmt = base_q.limit(params.limit).offset(params.offset or 0)
+        stmt = base_q.order_by(A.pub_date.desc(), A.id.desc()).limit(params.limit).offset(params.offset or 0)
         result = await session.execute(stmt)
         rows = [(pa, is_liked) for pa, is_liked in result.all()]
-        articles = [pa for pa, _ in rows]
-        response_items = serialize_processed_articles(rows)
 
-        # 3) Compute the new cursor as the oldest pub_date in this page
-        if articles:
-            next_cursor = articles[-1].article.pub_date
-        else:
-            next_cursor = None
-
-        # 4) Update the cursor on the existing ORM object and commit
-        feed_pos.cursor = next_cursor
-        await session.commit()
-
-        # 5) Return the response
+        # A short page is the last one
+        next_cursor = encode_feed_cursor(rows[-1][0].article) if len(rows) == params.limit else None
         return UnseenArticlesResponse(
-            results=response_items,
+            results=serialize_processed_articles(rows),
             next_cursor=next_cursor
         )
 

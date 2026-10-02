@@ -16,13 +16,14 @@ async def add_article(
     text: str = "some article text",
     embedding: list[float] | None = None,
     processed: bool = True,
+    pub_date: datetime = datetime(2026, 10, 1, tzinfo=timezone.utc),
 ) -> uuid.UUID:
     """Insert an article and, if `processed`, its processed_articles row. Returns the article id."""
     async with AsyncSessionLocal() as session:
         article = Article(
             title=f"Title: {text}",
             link=f"https://example.com/{uuid.uuid4()}",
-            pub_date=datetime(2026, 10, 1, tzinfo=timezone.utc),
+            pub_date=pub_date,
             description=text,
             categories=["News"],
             processed=processed,
