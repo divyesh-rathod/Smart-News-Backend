@@ -55,13 +55,13 @@ All routes are under `/api/V1`. News and user routes need `Authorization: Bearer
 | POST | `/auth/signup` | `{name, email, phone_number, password, profile_picture?}` | returns `{user, access_token}` |
 | POST | `/auth/login` | `{email, password}` | returns `{user, access_token}` |
 | PUT | `/users/update` | `{name?, phone_number?, profile_picture?}` | |
-| GET | `/news/unseen-articles?limit=20` | | unread articles, newest first, each with `liked` |
+| GET | `/news/unseen-articles?limit=20&cursor=...` | | unread articles, newest first, each with `liked`; pass the previous page's `next_cursor` for the next page (`null` on the last) |
 | POST | `/news/mark-as-read/{article_id}` | | idempotent |
 | PUT | `/news/like/{article_id}` | `{liked: true\|false}` | idempotent; returns `{message, liked, top5, similar}` |
 | POST | `/news/set-date?last_read_date=...` | | defaults to now (UTC) |
 | POST | `/scripts/run_pipeline` | | needs header `X-Admin-Token: <ADMIN_API_KEY>`; 503 if no key is configured |
 
-Interactive docs: `http://localhost:8000/docs`. Its Authorize button can't log in (login takes JSON, not a form), so call protected routes with curl and a token:
+Interactive docs: `http://localhost:8000/docs`. Call `/auth/login` there, then paste the returned `access_token` into Authorize (HTTPBearer); for the pipeline endpoint, also fill in `X-Admin-Token`. From the command line:
 
 ```bash
 TOKEN=$(curl -s -X POST localhost:8000/api/V1/auth/login -H 'Content-Type: application/json' \
@@ -91,7 +91,7 @@ psql -d smart_news -c "CREATE EXTENSION IF NOT EXISTS vector;"   # as a superuse
 Configure, migrate, ingest and run:
 
 ```bash
-cp .env.example .env   # then set DATABASE_URL, SECRET_KEY and, to enable the pipeline endpoint, ADMIN_API_KEY
+cp .env.example .env   # then set DATABASE_URL, SECRET_KEY (32+ characters) and, to enable the pipeline endpoint, ADMIN_API_KEY
 alembic upgrade head
 python -m app.scrapping.scraper
 python -m app.preprocessing.preprocess
@@ -108,7 +108,7 @@ Read from `.env` (see `.env.example`):
 | Variable | Default | Purpose |
 |---|---|---|
 | `DATABASE_URL` | required | `postgresql+asyncpg://user:password@host/db` |
-| `SECRET_KEY` | `your-default-secret` | JWT signing key; **set your own** |
+| `SECRET_KEY` | none usable | JWT signing key. The API refuses to start with a placeholder or a key shorter than 32 characters |
 | `ALGORITHM`, `ACCESS_TOKEN_EXPIRE_DAYS` | `HS256`, `15` | JWT settings |
 | `ADMIN_API_KEY` | unset | shared secret for `/scripts/run_pipeline`; unset disables it |
 | `DEBUG` | `False` | echo SQL statements |
@@ -127,8 +127,8 @@ TEST_DATABASE_URL=postgresql+asyncpg://user@localhost/smart_news_test pytest   #
 
 - Tests that use the `db` fixture need a migrated, disposable database at `TEST_DATABASE_URL`; they empty every table. Create it with `DATABASE_URL=<that url> alembic upgrade head`.
 - Tests marked `model` load the real models (downloads on first run), so CI skips them.
-- 60 tests in total. They cover retrieval (cosine ordering, NULL embeddings, the HNSW `ef_search` limit), likes (idempotency, concurrent first likes, ranking failures), the cache, the scraper, the embedding loop, auth on the pipeline endpoint, and startup.
-- GitHub Actions runs ruff, `alembic upgrade head` and `alembic check` against a `pgvector/pgvector:pg17` service container, then `pytest -m "not model"`.
+- 72 tests in total (68 in CI). They cover retrieval (cosine ordering, NULL embeddings, the HNSW `ef_search` limit), likes (idempotency, concurrent first likes, ranking failures), feed paging (no gaps or repeats, reloads), the cache, the scraper, the embedding loop, auth (tokens, the pipeline secret, `SECRET_KEY` checks), and startup.
+- GitHub Actions runs ruff, `alembic upgrade head` and `alembic check` against a `pgvector/pgvector:0.8.7-pg17` service container, then `pytest -m "not model"`.
 
 ## Evaluation
 
@@ -159,10 +159,9 @@ tests/            pytest suite
 
 ## Known limitations
 
-- **Feed paging is server-side.** Every `unseen-articles` request moves the user's stored cursor on by a page, and the `cursor` query parameter is ignored, so reloading skips the unread rest of the previous page.
 - **Recommendations aren't personalised beyond the liked article.** They're cached per article, not per user, and may include articles the user has already read.
 - **Truncation.** About 10% of (query, candidate) pairs exceed the cross-encoder's 512 tokens, and SBERT's 256-token limit cuts 17% of embedding inputs, dropping the categories at their end. The variants in `eval/` exist to measure fixes before changing rankings.
-- **Auth is minimal.** `SECRET_KEY` has an insecure default, the pipeline endpoint uses one shared secret, there's no token refresh, and passlib is unmaintained.
+- **Auth is minimal.** The pipeline endpoint uses one shared secret, there's no token refresh, and passlib is unmaintained.
 - **The cache is per process.** Several uvicorn workers each keep their own, and a pipeline run clears only the cache of the worker that ran it; after a CLI ingest, recommendations can be up to 15 minutes stale.
 
 ## License
