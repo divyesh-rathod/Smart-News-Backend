@@ -48,6 +48,28 @@ def db():
 
 
 @pytest.fixture
+def user(db):
+    """A saved user that the API treats as logged in."""
+    from app.main import app
+    from app.utils.auth import get_current_user
+    from tests.factories import add_user
+
+    user = asyncio.run(add_user())
+    app.dependency_overrides[get_current_user] = lambda: user
+    yield user
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client(user):
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    return TestClient(app)
+
+
+@pytest.fixture
 def fake_rerank(monkeypatch):
     """Stand-in for the cross-encoder: records its inputs and keeps the stage-1 order."""
     from app.ml_models import retrieve

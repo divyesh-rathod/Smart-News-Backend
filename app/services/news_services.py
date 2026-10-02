@@ -1,7 +1,7 @@
 import logging
 from app.db.models import Article, Like, ProcessedArticle, User, UserFeedPosition, UserRead
 from typing import List
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import update
 from sqlalchemy.orm import selectinload
 from sqlalchemy import select, and_
@@ -102,15 +102,15 @@ async def set_last_read_date(current_user: User, explicit_date: datetime | None 
         # Check if row exists
         row = await session.get(UserFeedPosition, current_user.id)
         if row:
-            new_date = explicit_date or datetime.utcnow()
+            new_date = explicit_date or datetime.now(timezone.utc)
             stmt = (
                 update(UserFeedPosition)
                 .where(UserFeedPosition.user_id == current_user.id)
-                .values(last_read_date=new_date, updated_at=datetime.utcnow())
+                .values(last_read_date=new_date, updated_at=datetime.now(timezone.utc))
             )
             await session.execute(stmt)
         else:
-            new_date = explicit_date or datetime.utcnow()
+            new_date = explicit_date or datetime.now(timezone.utc)
             new_row = UserFeedPosition(user_id=current_user.id, last_read_date=new_date)
             session.add(new_row)
 

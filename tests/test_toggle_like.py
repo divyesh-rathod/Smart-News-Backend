@@ -2,28 +2,10 @@ import asyncio
 import logging
 import uuid
 
-import pytest
-from fastapi.testclient import TestClient
-
 from app.db.models import Like
 from app.db.session import AsyncSessionLocal
-from app.main import app
 from app.ml_models import retrieve
-from app.utils.auth import get_current_user
-from tests.factories import add_article, add_user, vector
-
-
-@pytest.fixture
-def user(db):
-    user = asyncio.run(add_user())
-    app.dependency_overrides[get_current_user] = lambda: user
-    yield user
-    app.dependency_overrides.clear()
-
-
-@pytest.fixture
-def client(user):
-    return TestClient(app)
+from tests.factories import add_article, vector
 
 
 def toggle_like(client, article_id):

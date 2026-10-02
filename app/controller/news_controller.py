@@ -27,7 +27,7 @@ async def get_unseen_processed_articles_controller(
    
 async def set_last_read_date_controller(current_user: UserResponse,payload:UpdateLastReadRequest) -> str:
     try:
-        result = await set_last_read_date(current_user, payload)
+        result = await set_last_read_date(current_user, payload.last_read_date)
         return result
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
