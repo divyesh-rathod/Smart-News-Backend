@@ -2,7 +2,6 @@
 
 import re
 import asyncio
-import spacy
 from bs4 import BeautifulSoup
 
 from sqlalchemy import select
@@ -10,8 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import AsyncSessionLocal
 from app.db.models.article import Article
 from app.db.models.processed_article import ProcessedArticle
-
-nlp = spacy.load("en_core_web_sm")
 
 
 def clean_text(text: str) -> str:

@@ -24,7 +24,6 @@ passlib[bcrypt]>=1.7.4
 torch>=1.12.0
 transformers>=4.20.0
 sentence-transformers>=2.2.0
-spacy>=3.8.0
 numpy>=1.21.0
 
 # Web Scraping and Data Processing
