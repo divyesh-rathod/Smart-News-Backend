@@ -6,28 +6,16 @@ from app.utils.sbert_helper import embed_articles  # async helper
 
 logger = logging.getLogger(__name__)
 
-async def main():
+async def main() -> int:
     total_embedded = 0
 
-    while True:
-        # Process a batch of articles (returns e.g. "50 articles embedded and saved.")
-        result_message = await embed_articles(batch_size=100)
-
-        # Extract the count from the message
-        try:
-            batch_count = int(result_message.split()[0])
-        except (ValueError, IndexError):
-            logger.error("Unexpected result message format: %s", result_message)
-            break
-
+    # Stop when a batch finds nothing left to embed
+    while batch_count := await embed_articles(batch_size=100):
         total_embedded += batch_count
-        logger.info("%s", result_message)
-
-        # Stop when no more articles to embed
-        if batch_count == 0:
-            break
+        logger.info("%d articles embedded and saved", batch_count)
 
     logger.info("Done. Total documents embedded: %d", total_embedded)
+    return total_embedded
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
