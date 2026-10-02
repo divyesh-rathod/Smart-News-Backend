@@ -161,39 +161,9 @@ async def toggle_article_like(
             return "Article liked", True, top5, similar
         
 
-def serialize_article_scores(raw: list) -> list[ArticleScore]:
-    """
-    Convert query results into List[ArticleScore].
-    Handles reranked dicts (top5) and stage-1 rows (ProcessedArticle, title, link, distance).
-    """
-    results: list[ArticleScore] = []
-    
-    for row in raw:
-        if isinstance(row, dict):  # reranked result from rerank_top_k
-            results.append(ArticleScore(
-                article_id=row['article_id'],
-                cleaned_text=row['cleaned_text'],
-                category_1=row['category_1'],
-                category_2=row['category_2'],
-                title=row['title'],
-                link=row['link'],
-                score=row['score']
-            ))
-        elif len(row) == 4:  # stage-1 row: (ProcessedArticle, title, link, distance)
-            art_obj, title, link, score = row
-            results.append(ArticleScore(
-                article_id=art_obj.article_id,
-                cleaned_text=art_obj.cleaned_text,
-                category_1=art_obj.category_1,
-                category_2=art_obj.category_2,
-                title=title,
-                link=link,
-                score=score
-            ))
-        else:
-            raise ValueError(f"Unexpected row format: {type(row)}")
-    
-    return results
+def serialize_article_scores(raw: list[dict]) -> list[ArticleScore]:
+    """Convert the top5 / similar dicts from retrieve.main into ArticleScore models."""
+    return [ArticleScore.model_validate(row) for row in raw]
 
 def serialize_processed_articles(
     pa_list: List[ProcessedArticle]

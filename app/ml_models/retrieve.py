@@ -1,93 +1,64 @@
-# app/services/similarity_service.py
+# app/ml_models/retrieve.py
 
 import logging
-from typing import List, Tuple
+from uuid import UUID
 
-from sqlalchemy import Float, asc
-from sqlalchemy import select
-from sqlalchemy.orm import load_only
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import Select, select
+
 from app.db.session import AsyncSessionLocal
 from app.db.models import Article, ProcessedArticle
 from app.ml_models.rerank import rerank_top_k
 
 logger = logging.getLogger(__name__)
 
-async def get_top_50_cosine_similar_articles(
-    session: AsyncSession,
-    article_id: str
-) -> List[Tuple[ProcessedArticle, str, str,float]]:
-    """
-    Return the 50 nearest neighbors by cosine distance (using pgvector's <-> operator).
-    """
-    # 1) Fetch the source article
-    result = await session.execute(
-        select(ProcessedArticle).where(ProcessedArticle.article_id == article_id)
-    )
-    source_article = result.scalars().first()
-    if not source_article:
-        raise ValueError(f"No article found with article_id: {article_id}")
-    if source_article.embedding is None:
-        raise ValueError(f"Article {article_id} does not have an embedding.")
+STAGE1_LIMIT = 50
 
-    # 2) Build the distance expression
-    distance_expr = (
-        ProcessedArticle.embedding
-        .op("<->")(source_article.embedding)  # Euclidean on normalized → cosine
-        .cast(Float)
-        .label("distance")
-    )
 
-    # 3) Query for nearest 50 (excluding the source)
-    stmt = (
+def build_stage1_query(source_article_id: UUID, source_embedding) -> Select:
+    """The STAGE1_LIMIT nearest embedded articles to source_embedding by cosine distance, excluding the source."""
+    # The bare `<=>` in ORDER BY is what lets pgvector serve this from a vector_cosine_ops index.
+    distance = ProcessedArticle.embedding.cosine_distance(source_embedding).label("distance")
+    return (
         select(
-            ProcessedArticle,
+            ProcessedArticle.article_id,
+            ProcessedArticle.cleaned_text,
+            ProcessedArticle.category_1,
+            ProcessedArticle.category_2,
             Article.title,
             Article.link,
-            distance_expr
+            distance,
         )
-        .join(Article, ProcessedArticle.article_id == Article.id)  
-        .where(ProcessedArticle.article_id != article_id)
-        .order_by(asc(distance_expr))
-        .limit(50)
+        .join(Article, ProcessedArticle.article_id == Article.id)
+        .where(ProcessedArticle.article_id != source_article_id)
+        .where(ProcessedArticle.embedding.is_not(None))
+        .order_by(distance)
+        .limit(STAGE1_LIMIT)
     )
-    results = await session.execute(stmt)
-    results = results.all()
-    logger.debug("Stage 1 returned %d candidates for article %s", len(results), article_id)
-    return results
 
 
-async def main(article_id: str = None):
+async def main(article_id: str) -> tuple[list[dict], list[dict]]:
+    """
+    Recommend articles similar to article_id: pgvector top 50 (stage 1), then cross-encoder top 5 (stage 2).
+
+    Returns (top5, similar). `similar` is stage 1 with score = cosine distance; top5 has score = cross-encoder
+    score. Both are empty when the article hasn't been processed or embedded yet, or no other article has.
+    """
     async with AsyncSessionLocal() as session:
-        # 1) Get top-50 by vector distance
-        similar = await get_top_50_cosine_similar_articles(session, article_id)
+        result = await session.execute(
+            select(ProcessedArticle).where(ProcessedArticle.article_id == article_id)
+        )
+        source = result.scalars().first()
+        if source is None or source.embedding is None:
+            logger.info("Article %s has no embedding yet, so no recommendations", article_id)
+            return [], []
 
-        # 2) Rerank top-50 with cross-encoder
-        #    Fetch the query text
-    stmt = (
-        select(ProcessedArticle)
-        .options(load_only("article_id", "cleaned_text", "category_1", "category_2"))
-        .where(ProcessedArticle.article_id == article_id)
-    )
-    result = await session.execute(stmt)
+        result = await session.execute(build_stage1_query(source.article_id, source.embedding))
+        candidates = [dict(row) for row in result.mappings()]
 
-    query_article = result.scalars().first()
-    if not query_article:
-            raise ValueError(f"Query article {article_id} not found")
-    query_text = query_article.cleaned_text or ""
-    detached_similar = []
-    for art_obj, title, link, distance in similar:
-            # Create plain dictionaries instead of ORM objects
-            detached_similar.append({
-                'article_id': str(art_obj.article_id),
-                'cleaned_text': art_obj.cleaned_text,
-                'category_1': art_obj.category_1,
-                'category_2': art_obj.category_2,
-                'title': title,
-                'link': link,
-                'distance': distance
-            })
+    logger.debug("Stage 1 returned %d candidates for article %s", len(candidates), article_id)
+    if not candidates:
+        return [], []
 
-    top5 = await rerank_top_k(query_text, detached_similar, top_n=5)
-
+    top5 = await rerank_top_k(source.cleaned_text or "", candidates, top_n=5)
+    similar = [{**candidate, "score": candidate["distance"]} for candidate in candidates]
     return top5, similar
