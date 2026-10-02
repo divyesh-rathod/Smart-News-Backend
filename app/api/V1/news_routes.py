@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends
 from app.controller.news_controller import mark_article_as_read_controller,get_unseen_processed_articles_controller, set_last_read_date_controller, set_article_like_controller
 from app.schemas.user_schema import UserResponse   
@@ -11,7 +13,7 @@ router = APIRouter(
 )
 
 @router.post("/mark-as-read/{article_id}", response_model=str)
-async def mark_article_as_read(article_id: str, current_user: UserResponse = Depends(get_current_user)):
+async def mark_article_as_read(article_id: UUID, current_user: UserResponse = Depends(get_current_user)):
  
     return await mark_article_as_read_controller(article_id, current_user)  
 
@@ -32,7 +34,7 @@ async def set_last_read_date(
 
 @router.put("/like/{article_id}", response_model=LikeResponse)
 async def set_article_like(
-    article_id: str,
+    article_id: UUID,
     payload: SetLikeRequest,
     current_user: UserResponse = Depends(get_current_user)
 ) -> LikeResponse:

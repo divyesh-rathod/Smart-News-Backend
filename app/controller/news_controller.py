@@ -1,4 +1,6 @@
 import logging
+from uuid import UUID
+
 from fastapi import HTTPException,status
 from app.services.news_services import mark_article_as_read, get_unseen_processed_articles_for_user,set_last_read_date, set_article_like
 from app.schemas.user_schema import UserResponse
@@ -6,7 +8,7 @@ from app.schemas.news_schema import UnseenArticlesQuery, UnseenArticlesResponse,
 
 logger = logging.getLogger(__name__)
 
-async def mark_article_as_read_controller(article_id: str, current_user: UserResponse) -> str:
+async def mark_article_as_read_controller(article_id: UUID, current_user: UserResponse) -> str:
     try:
         result = await mark_article_as_read(article_id, current_user)
         return result
@@ -36,7 +38,7 @@ async def set_last_read_date_controller(current_user: UserResponse,payload:Updat
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred")
 
 async def set_article_like_controller(
-    article_id: str, liked: bool, current_user: UserResponse
+    article_id: UUID, liked: bool, current_user: UserResponse
 ) -> tuple[str, bool, list[dict], list[dict]]:
     try:
         return await set_article_like(article_id, current_user, liked)
