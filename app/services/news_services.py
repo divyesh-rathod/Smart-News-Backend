@@ -8,6 +8,7 @@ from sqlalchemy import select, and_
 from app.db.session import AsyncSessionLocal
 from app.schemas.news_schema import UnseenProcessedArticle, UnseenArticlesResponse, UnseenArticlesQuery, ArticleScore
 from app.ml_models.retrieve import main
+from app.services import recommendation_cache
 
 from uuid import UUID
 
@@ -158,12 +159,20 @@ async def toggle_article_like(
 
 
 async def recommend_similar_articles(article_id: UUID) -> tuple[list[dict], list[dict]]:
-    """retrieve.main for a just-liked article, or empty lists (logged) if ranking fails."""
+    """retrieve.main for a just-liked article (cached per article), or empty lists (logged) if ranking fails."""
+    key = str(article_id)
+    cached = recommendation_cache.get(key)
+    if cached is not None:
+        return cached
     try:
-        return await main(str(article_id))
+        recommendations = await main(key)
     except Exception:
         logger.exception("Could not compute recommendations for liked article %s", article_id)
         return [], []
+    # Empty means not embedded yet or no neighbours yet; caching that would hide later results for the TTL.
+    if recommendations[0]:
+        recommendation_cache.put(key, recommendations)
+    return recommendations
 
 
 def serialize_article_scores(raw: list[dict]) -> list[ArticleScore]:

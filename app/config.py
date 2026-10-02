@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     # TORCH_NUM_THREADS unset keeps torch's default; lower it when several workers share a machine.
     MODEL_DEVICE: str = Field("cpu", env="MODEL_DEVICE")
     TORCH_NUM_THREADS: int | None = Field(None, env="TORCH_NUM_THREADS")
+
+    # Per-process cache of each liked article's recommendations. The TTL bounds staleness after a CLI
+    # ingest, which the API can't observe; a pipeline run triggered through the API clears it right away.
+    RECOMMENDATION_CACHE_SIZE: int = Field(256, env="RECOMMENDATION_CACHE_SIZE")
+    RECOMMENDATION_CACHE_TTL_SECONDS: int = Field(900, env="RECOMMENDATION_CACHE_TTL_SECONDS")
     
     # Additional settings can be added here:
     # For instance, port, host settings, API version, etc.

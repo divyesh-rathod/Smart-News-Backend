@@ -35,3 +35,6 @@ lxml==6.1.3
 
 # Environment Configuration
 python-dotenv==1.2.4
+
+# Caching
+cachetools==7.2.0

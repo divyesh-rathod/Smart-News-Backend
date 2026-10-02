@@ -15,6 +15,7 @@ from sqlalchemy.pool import NullPool  # noqa: E402
 from app.db.base import Base  # noqa: E402
 import app.db.models  # noqa: E402, F401
 from app.db.session import AsyncSessionLocal  # noqa: E402
+from app.services import recommendation_cache  # noqa: E402
 
 
 @pytest.hookimpl(tryfirst=True)
@@ -29,6 +30,11 @@ def pytest_collection_modifyitems(config, items):
         raise pytest.UsageError("Tests that use the db fixture need TEST_DATABASE_URL, and CI must not skip them")
     for item in db_items:
         item.add_marker(pytest.mark.skip(reason="TEST_DATABASE_URL is not set"))
+
+
+@pytest.fixture(autouse=True)
+def empty_recommendation_cache():
+    recommendation_cache.clear()
 
 
 @pytest.fixture
