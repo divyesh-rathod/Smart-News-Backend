@@ -1,7 +1,8 @@
 import asyncio
+import secrets
 from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import APIKeyHeader, OAuth2PasswordBearer
 import jwt
 
 from app.config import settings
@@ -59,4 +60,21 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user
+
+
+admin_token_header = APIKeyHeader(name="X-Admin-Token", auto_error=False)
+
+
+async def require_admin_token(token: str | None = Depends(admin_token_header)) -> None:
+    if not settings.ADMIN_API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Admin endpoints are disabled: ADMIN_API_KEY is not set",
+        )
+    # Compare bytes: compare_digest rejects non-ASCII str, and the header value comes from the client.
+    if token is None or not secrets.compare_digest(token.encode(), settings.ADMIN_API_KEY.encode()):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing admin token",
+        )
    

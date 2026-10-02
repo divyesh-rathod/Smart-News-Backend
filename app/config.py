@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_DAYS: int = Field(15, env="ACCESS_TOKEN_EXPIRE_DAYS")
 
     DEBUG: bool = Field(False, env="DEBUG")
+
+    # Shared secret for admin-only endpoints (sent as X-Admin-Token). Unset or empty disables them.
+    ADMIN_API_KEY: str | None = Field(None, env="ADMIN_API_KEY")
     
     # Additional settings can be added here:
     # For instance, port, host settings, API version, etc.

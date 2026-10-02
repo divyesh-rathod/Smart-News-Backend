@@ -1,13 +1,15 @@
 # app/api/routers/pipeline_router.py
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
 from app.controller.scripts_controller import (
    start_full_pipeline_subprocesses
 )
+from app.utils.auth import require_admin_token
 
 router = APIRouter(
     tags=["Scripts"],
+    dependencies=[Depends(require_admin_token)],  # admin-only: requires the X-Admin-Token header
     responses={404: {"description": "Not found"}},
 )
 
