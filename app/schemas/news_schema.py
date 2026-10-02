@@ -32,6 +32,7 @@ class UnseenProcessedArticle(BaseModel):
     link:        str
     description: Optional[str]
     categories:  Optional[List[str]]
+    liked:       bool = False
 
     class Config:
         from_attributes = True
@@ -67,7 +68,11 @@ class ArticleScore(ArticleBase):
     class Config:
         from_attributes = True  # if you ever want to return ORM models directly
 
-class ToggleLikeResponse(BaseModel):
+class SetLikeRequest(BaseModel):
+    liked: bool
+
+
+class LikeResponse(BaseModel):
     message: str
     liked: bool
     top5: List[ArticleScore]

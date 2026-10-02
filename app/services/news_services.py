@@ -3,8 +3,9 @@ from app.db.models import Article, Like, ProcessedArticle, User, UserFeedPositio
 from typing import List
 from datetime import datetime, timezone
 from sqlalchemy import update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import selectinload
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 from app.db.session import AsyncSessionLocal
 from app.schemas.news_schema import UnseenProcessedArticle, UnseenArticlesResponse, UnseenArticlesQuery, ArticleScore
 from app.ml_models.retrieve import main
@@ -26,8 +27,6 @@ async def mark_article_as_read(article_id: UUID, current_user: User) -> str:
             raise ValueError("Article not found")
         
         # Use PostgreSQL's ON CONFLICT DO NOTHING for atomic upsert
-        from sqlalchemy.dialects.postgresql import insert
-        
         stmt = insert(UserRead).values(
             user_id=current_user.id,
             article_id=article_id
@@ -46,7 +45,7 @@ async def get_unseen_processed_articles_for_user(
 ) -> UnseenArticlesResponse:
     async with AsyncSessionLocal() as session:
 
-        PA, A, UR = ProcessedArticle, Article, UserRead
+        PA, A, UR, L = ProcessedArticle, Article, UserRead, Like
 
         # 1) Load or create the feed position row
         feed_pos = await session.get(UserFeedPosition, current_user.id)
@@ -58,12 +57,15 @@ async def get_unseen_processed_articles_for_user(
         current_cursor = feed_pos.cursor
 
         # 2) Fetch the next batch of unread articles
+        liked = (func.coalesce(L.is_liked, 0) == 1).label("liked")
         base_q = (
-            select(PA)
+            select(PA, liked)
             .options(selectinload(ProcessedArticle.article))  
             .join(A, PA.article_id == A.id)
             .outerjoin(UR, and_(UR.article_id == A.id,
                                 UR.user_id    == current_user.id))
+            .outerjoin(L, and_(L.article_id == A.id,
+                               L.user_id    == current_user.id))
             .where(UR.article_id.is_(None))
         )
 
@@ -75,8 +77,9 @@ async def get_unseen_processed_articles_for_user(
 
         stmt = base_q.limit(params.limit).offset(params.offset or 0)
         result = await session.execute(stmt)
-        articles = result.scalars().all()
-        response_items = serialize_processed_articles(articles)
+        rows = [(pa, is_liked) for pa, is_liked in result.all()]
+        articles = [pa for pa, _ in rows]
+        response_items = serialize_processed_articles(rows)
 
         # 3) Compute the new cursor as the oldest pub_date in this page
         if articles:
@@ -122,34 +125,24 @@ async def set_last_read_date(current_user: User, explicit_date: datetime | None 
     
 
 
-async def toggle_article_like(
+async def set_article_like(
     article_id: UUID,
-    current_user: User
+    current_user: User,
+    liked: bool,
 ) -> tuple[str, bool, list[dict], list[dict]]:
-    """Flip the user's like and commit it. Recommendations for a new like are best effort and never undo it."""
+    """
+    Set the user's like to `liked`. Idempotent: repeating a request (a retry, a double click) changes nothing.
+    Recommendations for a liked article are best effort and never undo the like.
+    """
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(Article.id).where(Article.id == article_id))
         if result.scalar_one_or_none() is None:
             raise ValueError("Article not found")
 
-        result = await session.execute(
-            select(Like).where(
-                Like.article_id == article_id,
-                Like.user_id    == current_user.id
-            )
-        )
-        existing_like = result.scalar_one_or_none()
-
-        if existing_like:
-            existing_like.is_liked = existing_like.is_liked ^ 1
-            liked = existing_like.is_liked == 1
-        else:
-            session.add(Like(
-                user_id    = current_user.id,
-                article_id = article_id,
-                is_liked   = 1
-            ))
-            liked = True
+        # One atomic upsert: two concurrent requests can't both try to insert the same row.
+        stmt = insert(Like).values(user_id=current_user.id, article_id=article_id, is_liked=int(liked))
+        stmt = stmt.on_conflict_do_update(index_elements=[Like.user_id, Like.article_id], set_={"is_liked": int(liked)})
+        await session.execute(stmt)
         await session.commit()
 
     if not liked:
@@ -180,14 +173,14 @@ def serialize_article_scores(raw: list[dict]) -> list[ArticleScore]:
     return [ArticleScore.model_validate(row) for row in raw]
 
 def serialize_processed_articles(
-    pa_list: List[ProcessedArticle]
+    rows: List[tuple[ProcessedArticle, bool]]
 ) -> List[UnseenProcessedArticle]:
     """
-    Turn a list of ProcessedArticle (with .article relationship loaded)
-    into a liof UnseenProcessedArticle Pydantic model
+    Turn (ProcessedArticle with .article loaded, liked by the current user) rows
+    into a list of UnseenProcessedArticle Pydantic models
     """
     out: List[UnseenProcessedArticle] = []
-    for pa in pa_list:
+    for pa, liked in rows:
         art = pa.article
         out.append(UnseenProcessedArticle(
             article_id   = pa.article_id,
@@ -200,6 +193,7 @@ def serialize_processed_articles(
             link         = art.link,
             description  = art.description,
             categories   = art.categories,
+            liked        = liked,
         ))
     return out
 
