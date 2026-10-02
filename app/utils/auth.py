@@ -2,7 +2,7 @@ import asyncio
 import secrets
 from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException, status
-from fastapi.security import APIKeyHeader, OAuth2PasswordBearer
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 import jwt
 
 from app.config import settings
@@ -28,10 +28,13 @@ async def create_access_token(
 
 
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+# A plain bearer scheme, so Swagger's Authorize dialog takes the access_token from /auth/login (which
+# accepts JSON, not the form an OAuth2 password flow would post).
+bearer_scheme = HTTPBearer(description="The access_token returned by /auth/signup or /auth/login")
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme)):
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
+    token = credentials.credentials
     # 1) Decode & validate
     loop = asyncio.get_running_loop()
     try:
