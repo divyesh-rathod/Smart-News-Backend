@@ -4,7 +4,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import sqlalchemy as sa
 from pgvector.sqlalchemy import Vector
-from app.db.models.article import Article, Base
+from app.db.models.article import Base
 
 class ProcessedArticle(Base):
     __tablename__ = 'processed_articles'

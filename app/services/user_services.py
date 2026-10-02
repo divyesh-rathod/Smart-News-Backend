@@ -1,6 +1,5 @@
 import asyncio
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from passlib.context import CryptContext
 from app.db.session import AsyncSessionLocal
 from app.db.models.user import User

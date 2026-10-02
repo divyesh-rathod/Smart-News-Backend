@@ -1,9 +1,8 @@
 import logging
-from typing import Tuple
 from fastapi import HTTPException,status
 from app.services.news_services import mark_article_as_read, get_unseen_processed_articles_for_user,set_last_read_date, toggle_article_like
 from app.schemas.user_schema import UserResponse
-from app.schemas.news_schema import ToggleLikeResponse, UnseenArticlesQuery, UnseenArticlesResponse,UnseenProcessedArticle,UpdateLastReadRequest
+from app.schemas.news_schema import ToggleLikeResponse, UnseenArticlesQuery, UnseenArticlesResponse,UpdateLastReadRequest
 
 logger = logging.getLogger(__name__)
 

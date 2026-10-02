@@ -6,9 +6,7 @@ import logging
 import httpx
 from bs4 import BeautifulSoup
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from email.utils import parsedate_to_datetime
-from datetime import datetime
 from app.db.session import AsyncSessionLocal
 from app.db.models.article import Article
 

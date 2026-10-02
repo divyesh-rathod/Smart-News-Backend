@@ -1,9 +1,8 @@
-from typing import Tuple
 from fastapi import APIRouter, Depends
 from app.controller.news_controller import mark_article_as_read_controller,get_unseen_processed_articles_controller, set_last_read_date_controller, toggle_article_like_controller
 from app.schemas.user_schema import UserResponse   
-from app.schemas.news_schema import ToggleLikeResponse, UnseenArticlesResponse, UnseenArticlesQuery, UnseenProcessedArticle, UpdateLastReadRequest
-from app.services.news_services import serialize_article_scores,serialize_processed_articles
+from app.schemas.news_schema import ToggleLikeResponse, UnseenArticlesResponse, UnseenArticlesQuery, UpdateLastReadRequest
+from app.services.news_services import serialize_article_scores
 from app.utils.auth import get_current_user 
 
 router = APIRouter(

@@ -1,7 +1,7 @@
 # app/controllers/user_controller.py
 from fastapi import HTTPException, status
-from app.schemas.user_schema import UserCreate, UserWithToken,UpdateUserSchema, UserResponse
-from app.services.user_services import create_user, login_user,update_user
+from app.schemas.user_schema import UserCreate, UserWithToken
+from app.services.user_services import create_user, login_user
 
 async def create_user_controller(user_details: UserCreate) -> UserWithToken:
     try:

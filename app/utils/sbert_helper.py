@@ -1,7 +1,6 @@
 import asyncio
 from sentence_transformers import SentenceTransformer
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import AsyncSessionLocal
 from app.db.models.processed_article import ProcessedArticle
 import numpy as np
@@ -29,7 +28,7 @@ async def embed_articles(batch_size: int = 100) -> str:
         # fetch articles needing embeddings
         result = await session.execute(
             select(ProcessedArticle)
-            .filter(ProcessedArticle.embedding == None)
+            .filter(ProcessedArticle.embedding.is_(None))
             .limit(batch_size)
         )
         articles = result.scalars().all()

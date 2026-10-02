@@ -1,10 +1,9 @@
 from app.db.models import Article, Like, ProcessedArticle, User, UserFeedPosition, UserRead
-from typing import List, Optional, Tuple
+from typing import List
 from datetime import datetime
-import sqlalchemy.exc
-from sqlalchemy import insert, update
+from sqlalchemy import update
 from sqlalchemy.orm import selectinload
-from sqlalchemy import select, desc, and_
+from sqlalchemy import select, and_
 from app.db.session import AsyncSessionLocal
 from app.schemas.news_schema import UnseenProcessedArticle, UnseenArticlesResponse, UnseenArticlesQuery,ToggleLikeResponse,ArticleScore
 from app.ml_models.retrieve import main

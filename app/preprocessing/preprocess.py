@@ -6,7 +6,6 @@ import logging
 from bs4 import BeautifulSoup
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import AsyncSessionLocal
 from app.db.models.article import Article
 from app.db.models.processed_article import ProcessedArticle
@@ -35,7 +34,7 @@ async def process_articles() -> None:
     async with AsyncSessionLocal() as session:  
         try:
             # 1) Load all articles
-            result = await session.execute(select(Article).where(Article.processed == False))
+            result = await session.execute(select(Article).where(Article.processed.is_(False)))
             articles_to_process = result.scalars().all()
 
             for article in articles_to_process:

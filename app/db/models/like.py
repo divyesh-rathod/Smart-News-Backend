@@ -1,6 +1,6 @@
 # app/db/models/user_article_like.py
 
-from sqlalchemy import Column, Boolean, ForeignKey, SmallInteger, text
+from sqlalchemy import Column, ForeignKey, SmallInteger, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 

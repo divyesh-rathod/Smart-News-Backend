@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import load_only
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import AsyncSessionLocal
-from app.db.models.processed_article import ProcessedArticle, Article
+from app.db.models import Article, ProcessedArticle
 from app.ml_models.rerank import rerank_top_k
 
 logger = logging.getLogger(__name__)
