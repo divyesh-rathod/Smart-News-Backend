@@ -1,7 +1,13 @@
+import asyncio
 from datetime import datetime, timezone
 
+import httpx
 from bs4 import BeautifulSoup
+from sqlalchemy import select
 
+from app.db.models import Article
+from app.db.session import AsyncSessionLocal
+from app.scrapping import scraper
 from app.scrapping.scraper import RSS_ENDPOINTS, parse_rss_items
 
 RSS = """<?xml version="1.0" encoding="UTF-8"?>
@@ -44,3 +50,73 @@ def test_parse_rss_items_falls_back_when_fields_are_missing_or_invalid():
     assert second["pub_date"] is None
     assert second["description"] == "No Description"
     assert second["categories"] == []
+
+
+def feed_xml(endpoint: str) -> str:
+    return f"""<?xml version="1.0"?><rss><channel><item>
+      <title>{endpoint}</title><link>https://www.theguardian.com/{endpoint}/1</link>
+      <pubDate>Thu, 01 Oct 2026 10:00:00 GMT</pubDate><description>text</description>
+    </item></channel></rss>"""
+
+
+def test_feeds_are_fetched_concurrently_up_to_the_cap_and_failed_feeds_are_skipped():
+    endpoints = [f"feed-{i}" for i in range(20)] + ["broken", "timing-out"]
+    in_flight, peak = 0, 0
+
+    async def handler(request):
+        nonlocal in_flight, peak
+        endpoint = request.url.path.strip("/").removesuffix("/rss")
+        in_flight += 1
+        peak = max(peak, in_flight)
+        try:
+            await asyncio.sleep(0.01)
+            if endpoint == "broken":
+                return httpx.Response(500)
+            if endpoint == "timing-out":
+                raise httpx.ReadTimeout("timed out", request=request)
+            return httpx.Response(200, text=feed_xml(endpoint))
+        finally:
+            in_flight -= 1
+
+    async def fetch():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await scraper.fetch_all_feeds(endpoints, client)
+
+    articles = asyncio.run(fetch())
+
+    assert sorted(a["title"] for a in articles) == sorted(f"feed-{i}" for i in range(20))
+    assert peak == scraper.FETCH_CONCURRENCY
+
+
+def item(slug: str, pub_date: datetime | None = datetime(2026, 10, 1, tzinfo=timezone.utc)) -> dict:
+    return {
+        "title": f"Title {slug}",
+        "link": f"https://www.theguardian.com/{slug}",
+        "pub_date": pub_date,
+        "description": "text",
+        "categories": ["News"],
+    }
+
+
+def stored_slugs() -> list[str]:
+    async def get():
+        async with AsyncSessionLocal() as session:
+            return (await session.execute(select(Article.link))).scalars().all()
+
+    return sorted(link.removeprefix("https://www.theguardian.com/") for link in asyncio.run(get()))
+
+
+def test_storing_skips_links_already_stored_or_repeated_in_the_batch(db):
+    asyncio.run(scraper.store_articles_in_db([item("a")]))
+
+    inserted = asyncio.run(scraper.store_articles_in_db([item("a"), item("b"), item("b"), item("c")]))
+
+    assert inserted == 2
+    assert stored_slugs() == ["a", "b", "c"]
+
+
+def test_an_item_without_a_publication_date_is_skipped_instead_of_failing_the_batch(db):
+    inserted = asyncio.run(scraper.store_articles_in_db([item("dated"), item("undated", pub_date=None)]))
+
+    assert inserted == 1
+    assert stored_slugs() == ["dated"]

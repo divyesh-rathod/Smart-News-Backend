@@ -5,12 +5,15 @@ import logging
 
 import httpx
 from bs4 import BeautifulSoup
-from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from email.utils import parsedate_to_datetime
 from app.db.session import AsyncSessionLocal
 from app.db.models.article import Article
 
 logger = logging.getLogger(__name__)
+
+FETCH_CONCURRENCY = 8  # feeds requested at once, to stay polite to the Guardian
+FETCH_TIMEOUT_SECONDS = 10
 
 RSS_ENDPOINTS = [
     "international", "football", "politics", "global-development",
@@ -28,13 +31,30 @@ RSS_ENDPOINTS = [
     "business/retail"
 ]
 
-async def fetch_rss_feed(url: str) -> BeautifulSoup:
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(url)
-        if resp.status_code == 200:
-            return BeautifulSoup(resp.content, "lxml-xml")
-        else:
-            raise Exception(f"Failed to fetch RSS feed: {resp.status_code} for URL: {url}")
+async def fetch_rss_feed(client: httpx.AsyncClient, url: str) -> BeautifulSoup:
+    resp = await client.get(url)
+    if resp.status_code == 200:
+        return BeautifulSoup(resp.content, "lxml-xml")
+    else:
+        raise Exception(f"Failed to fetch RSS feed: {resp.status_code} for URL: {url}")
+
+
+async def fetch_all_feeds(endpoints: list[str], client: httpx.AsyncClient) -> list[dict]:
+    """Fetch and parse every feed, FETCH_CONCURRENCY at a time. A feed that fails is logged and skipped."""
+    semaphore = asyncio.Semaphore(FETCH_CONCURRENCY)
+
+    async def fetch(endpoint: str) -> list[dict]:
+        url = f"https://www.theguardian.com/{endpoint}/rss"
+        async with semaphore:
+            try:
+                soup = await fetch_rss_feed(client, url)
+            except Exception as e:
+                logger.warning("Error fetching feed from %s: %s", url, e)
+                return []
+        return parse_rss_items(soup)
+
+    feeds = await asyncio.gather(*(fetch(endpoint) for endpoint in endpoints))
+    return [article for feed in feeds for article in feed]
 
 def parse_rss_items(soup: BeautifulSoup) -> list[dict]:
     items = soup.find_all("item")
@@ -62,46 +82,38 @@ def parse_rss_items(soup: BeautifulSoup) -> list[dict]:
         })
     return articles
 
-async def store_articles_in_db(articles: list[dict]):
-    async with AsyncSessionLocal() as session: 
-        try:
-            # 1) Fetch all existing links from DB
-            result = await session.execute(select(Article.link))
-            existing_links = {row[0] for row in result.all()}
+async def store_articles_in_db(articles: list[dict]) -> int:
+    """Insert the articles whose link isn't stored yet. Returns how many were inserted."""
+    # pub_date is NOT NULL: one undated item used to fail the whole batch.
+    dated = [art for art in articles if art["pub_date"] is not None]
+    if len(dated) < len(articles):
+        logger.warning("Skipping %d items without a valid pubDate", len(articles) - len(dated))
+    if not dated:
+        return 0
 
-            skipped = 0
-            for art in articles:
-                link = art["link"]
-                if link in existing_links:
-                    skipped += 1
-                    continue
+    rows = [
+        {
+            "title": art["title"],
+            "link": art["link"],
+            "pub_date": art["pub_date"],
+            "description": art["description"],
+            "categories": art.get("categories", []),
+        }
+        for art in dated
+    ]
+    # The unique link constraint skips both stored links and links repeated across feeds in this batch.
+    stmt = insert(Article).on_conflict_do_nothing(index_elements=[Article.link]).returning(Article.id)
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(stmt, rows)
+        inserted = len(result.all())
+        await session.commit()
 
-                new_article = Article(
-                    title=art["title"],
-                    link=link,
-                    pub_date=art["pub_date"],
-                    description=art["description"],
-                    categories=art.get("categories", []),
-                )
-                session.add(new_article)
-                existing_links.add(link)
-
-            await session.commit()
-            logger.info("Stored %d new articles, skipped %d duplicates", len(articles) - skipped, skipped)
-        except Exception:
-            await session.rollback()
-            logger.exception("Error storing articles")
+    logger.info("Stored %d new articles, skipped %d duplicates", inserted, len(dated) - inserted)
+    return inserted
 
 async def main():
-    all_articles: list[dict] = []
-    for endpoint in RSS_ENDPOINTS:
-        url = f"https://www.theguardian.com/{endpoint}/rss"
-        try:
-            soup = await fetch_rss_feed(url)
-        except Exception as e:
-            logger.warning("Error fetching feed from %s: %s", url, e)
-            continue
-        all_articles.extend(parse_rss_items(soup))
+    async with httpx.AsyncClient(timeout=FETCH_TIMEOUT_SECONDS) as client:
+        all_articles = await fetch_all_feeds(RSS_ENDPOINTS, client)
 
     await store_articles_in_db(all_articles)
 
