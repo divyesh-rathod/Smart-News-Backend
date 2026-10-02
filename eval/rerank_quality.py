@@ -49,7 +49,7 @@ def main() -> None:
             diff, low, high = paired_bootstrap(s["p5"], scores[BASELINE]["p5"])
             versus = f"{diff:+.3f} ({low:+.3f}, {high:+.3f})"
         ms = statistics.median(systems.seconds[name]) * 1000
-        print(f"| {name} | {mean['p1']:.3f} | {mean['p5']:.3f} | {mean['ndcg5']:.3f} | {mean['judged5']:.2f} | {versus} | {ms:.0f} |")
+        print(f"| {name} | {mean['p1']:.3f} | {mean['p5']:.3f} | {mean['ndcg5']:.3f} | {mean['judged5']:.2f} | {versus} | {ms:.1f} |")
 
     print()
     for name in SYSTEMS:
