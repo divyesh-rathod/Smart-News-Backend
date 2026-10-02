@@ -16,7 +16,7 @@ STAGE1_LIMIT = 50
 
 def build_stage1_query(source_article_id: UUID, source_embedding) -> Select:
     """The STAGE1_LIMIT nearest embedded articles to source_embedding by cosine distance, excluding the source."""
-    # The bare `<=>` in ORDER BY is what lets pgvector serve this from a vector_cosine_ops index.
+    # Only a vector_cosine_ops index can serve ORDER BY <=>; Postgres ignores a vector_l2_ops one.
     distance = ProcessedArticle.embedding.cosine_distance(source_embedding).label("distance")
     return (
         select(
