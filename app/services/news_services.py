@@ -1,4 +1,4 @@
-from app.db.models import *
+from app.db.models import Article, Like, ProcessedArticle, User, UserFeedPosition, UserRead
 from typing import List, Optional, Tuple
 from datetime import datetime
 import sqlalchemy.exc
@@ -12,7 +12,7 @@ from app.ml_models.retrieve import main
 from uuid import UUID
 
 
-async def mark_article_as_read(article_id: UUID, current_user: user) -> str:
+async def mark_article_as_read(article_id: UUID, current_user: User) -> str:
     async with AsyncSessionLocal() as session:
         # First, verify the article exists
         result = await session.execute(
@@ -165,14 +165,14 @@ async def toggle_article_like(
 def serialize_article_scores(raw: list) -> list[ArticleScore]:
     """
     Convert query results into List[ArticleScore].
-    Handles both old format (ProcessedArticle, float) and new format with JOIN.
+    Handles reranked dicts (top5) and stage-1 rows (ProcessedArticle, title, link, distance).
     """
     results: list[ArticleScore] = []
     
     for row in raw:
         print(f"DEBUG: serialize_article_scores row format: {len(row)} values")  # 🔍 Debug
         
-        if isinstance(row, dict):  # ✅ NEW: Handle dictionary format
+        if isinstance(row, dict):  # reranked result from rerank_top_k
             results.append(ArticleScore(
                 article_id=row['article_id'],
                 cleaned_text=row['cleaned_text'],
@@ -182,7 +182,7 @@ def serialize_article_scores(raw: list) -> list[ArticleScore]:
                 link=row['link'],
                 score=row['score']
             ))
-        elif len(row) == 4:  # Old format: (ProcessedArticle, title, link, score)
+        elif len(row) == 4:  # stage-1 row: (ProcessedArticle, title, link, distance)
             art_obj, title, link, score = row
             results.append(ArticleScore(
                 article_id=art_obj.article_id,
@@ -191,17 +191,6 @@ def serialize_article_scores(raw: list) -> list[ArticleScore]:
                 category_2=art_obj.category_2,
                 title=title,
                 link=link,
-                score=score
-            ))
-        elif len(row) == 2:  # Old format: (ProcessedArticle, score)
-            art_obj, score = row
-            results.append(ArticleScore(
-                article_id=art_obj.article_id,
-                cleaned_text=art_obj.cleaned_text,
-                category_1=art_obj.category_1,
-                category_2=art_obj.category_2,
-                title="Unknown",
-                link="",
                 score=score
             ))
         else:

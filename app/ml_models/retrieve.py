@@ -1,6 +1,5 @@
 # app/services/similarity_service.py
 
-import asyncio
 from typing import List, Tuple
 
 from sqlalchemy import Float, asc
@@ -64,7 +63,6 @@ async def main(article_id: str = None):
         print(f"DEBUG: Found {len(similar)} similar articles")
         print(f"DEBUG: First similar article: {similar[0]}")
         print("THis is Divyesh debugging")
-        candidates = [art_obj for art_obj, title, link, distance in similar]
 
         # 2) Rerank top-50 with cross-encoder
         #    Fetch the query text
@@ -95,12 +93,3 @@ async def main(article_id: str = None):
     top5 = await rerank_top_k(query_text, detached_similar, top_n=5)
 
     return top5, similar
-
-        # # 3) Output
-        # for art, score in top5:
-        #     print(f"{art.article_id} → cross-encoder score {score:.4f}")
-        # for art, distance in similar:
-        #     print(f"Article ID: {art.article_id}, Cosine Distance: {distance:.4f}")
-
-if __name__ == "__main__":
-    asyncio.run(main())
