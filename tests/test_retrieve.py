@@ -8,19 +8,6 @@ from app.ml_models import retrieve
 from tests.factories import add_article, vector
 
 
-@pytest.fixture
-def fake_rerank(monkeypatch):
-    """Stand-in for the cross-encoder: records its inputs and keeps the stage-1 order."""
-    calls = []
-
-    async def rerank_top_k(query, candidates, top_n=5):
-        calls.append({"query": query, "candidates": candidates})
-        return [{**c, "score": 1.0} for c in candidates[:top_n]]
-
-    monkeypatch.setattr(retrieve, "rerank_top_k", rerank_top_k)
-    return calls
-
-
 def ids(rows: list[dict]) -> list[uuid.UUID]:
     return [row["article_id"] for row in rows]
 

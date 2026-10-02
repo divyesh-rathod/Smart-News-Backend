@@ -1,3 +1,4 @@
+import logging
 from app.db.models import Article, Like, ProcessedArticle, User, UserFeedPosition, UserRead
 from typing import List
 from datetime import datetime
@@ -5,10 +6,12 @@ from sqlalchemy import update
 from sqlalchemy.orm import selectinload
 from sqlalchemy import select, and_
 from app.db.session import AsyncSessionLocal
-from app.schemas.news_schema import UnseenProcessedArticle, UnseenArticlesResponse, UnseenArticlesQuery,ToggleLikeResponse,ArticleScore
+from app.schemas.news_schema import UnseenProcessedArticle, UnseenArticlesResponse, UnseenArticlesQuery, ArticleScore
 from app.ml_models.retrieve import main
 
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 
 async def mark_article_as_read(article_id: UUID, current_user: User) -> str:
@@ -121,8 +124,12 @@ async def set_last_read_date(current_user: User, explicit_date: datetime | None 
 async def toggle_article_like(
     article_id: UUID,
     current_user: User
-) -> ToggleLikeResponse:
+) -> tuple[str, bool, list[dict], list[dict]]:
+    """Flip the user's like and commit it. Recommendations for a new like are best effort and never undo it."""
     async with AsyncSessionLocal() as session:
+        result = await session.execute(select(Article.id).where(Article.id == article_id))
+        if result.scalar_one_or_none() is None:
+            raise ValueError("Article not found")
 
         result = await session.execute(
             select(Like).where(
@@ -133,33 +140,31 @@ async def toggle_article_like(
         existing_like = result.scalar_one_or_none()
 
         if existing_like:
-            # 3A) Flip the 0/1 integer in Python, re‐add, and commit
             existing_like.is_liked = existing_like.is_liked ^ 1
-            session.add(existing_like)
-            await session.commit()
-
-            # If it was 1 → becomes 0, we treat that as “Like removed”
-            if existing_like.is_liked == 0:
-                return "Like removed", False,[], []
-            else:
-                top5, similar = await main(str(article_id))
-                return "Article liked", True, top5, similar
-
+            liked = existing_like.is_liked == 1
         else:
-            # 3B) No row yet → create a new one with is_liked=1
-            new_like = Like(
+            session.add(Like(
                 user_id    = current_user.id,
                 article_id = article_id,
                 is_liked   = 1
-            )
-            session.add(new_like)
-            await session.commit()
+            ))
+            liked = True
+        await session.commit()
 
-            top5, similar = await main(str(article_id))
+    if not liked:
+        return "Like removed", False, [], []
+    top5, similar = await recommend_similar_articles(article_id)
+    return "Article liked", True, top5, similar
 
 
-            return "Article liked", True, top5, similar
-        
+async def recommend_similar_articles(article_id: UUID) -> tuple[list[dict], list[dict]]:
+    """retrieve.main for a just-liked article, or empty lists (logged) if ranking fails."""
+    try:
+        return await main(str(article_id))
+    except Exception:
+        logger.exception("Could not compute recommendations for liked article %s", article_id)
+        return [], []
+
 
 def serialize_article_scores(raw: list[dict]) -> list[ArticleScore]:
     """Convert the top5 / similar dicts from retrieve.main into ArticleScore models."""
