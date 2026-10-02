@@ -4,7 +4,6 @@ from sentence_transformers import SentenceTransformer
 from sqlalchemy import select
 from app.db.session import AsyncSessionLocal
 from app.db.models.processed_article import ProcessedArticle
-import numpy as np
 
 
 @functools.cache
@@ -13,17 +12,11 @@ def get_model() -> SentenceTransformer:
     return SentenceTransformer("all-MiniLM-L6-v2")
 
 
-def generate_embedding(text: str) -> list[float]:
-    """
-    Generate SBERT embedding from a cleaned text string.
-    """
+def generate_embedding(text: str) -> list[float] | None:
+    """Unit-length SBERT embedding of a cleaned text string, or None for empty text."""
     if not text:
         return None
-    embedding = get_model().encode(text)
-    norm = np.linalg.norm(embedding)
-    if norm == 0:
-        return embedding.tolist()
-    return (embedding / norm).tolist()
+    return get_model().encode(text, normalize_embeddings=True).tolist()
 
 async def embed_articles(batch_size: int = 100) -> str:
     """
