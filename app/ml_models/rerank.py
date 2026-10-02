@@ -1,17 +1,30 @@
 # app/ml_models/rerank.py
 
 import asyncio
+import functools
 import logging
 
 import torch
 import torch.nn.functional as F
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from transformers import (
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
+    PreTrainedModel,
+    PreTrainedTokenizerBase,
+)
 
 logger = logging.getLogger(__name__)
 
 MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-model     = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME)
+
+
+@functools.cache
+def get_model() -> tuple[PreTrainedTokenizerBase, PreTrainedModel]:
+    """Load the cross-encoder on first use, so importing this module doesn't download weights."""
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME)
+    return tokenizer, model
+
 
 async def rerank_top_k(
     query: str,
@@ -20,6 +33,7 @@ async def rerank_top_k(
     device: str | None = None
 ) -> list[dict]:
     """Score every (query, candidate text) pair with the cross-encoder and return the top_n, best first."""
+    tokenizer, model = get_model()
     texts = [c["cleaned_text"] or "" for c in candidates]
     pairs = [[query, text] for text in texts]
 

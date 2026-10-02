@@ -1,12 +1,17 @@
 import asyncio
+import functools
 from sentence_transformers import SentenceTransformer
 from sqlalchemy import select
 from app.db.session import AsyncSessionLocal
 from app.db.models.processed_article import ProcessedArticle
 import numpy as np
 
-# Load model once (singleton-style)
-model = SentenceTransformer("all-MiniLM-L6-v2")
+
+@functools.cache
+def get_model() -> SentenceTransformer:
+    """Load SBERT on first use, so importing this module doesn't download weights."""
+    return SentenceTransformer("all-MiniLM-L6-v2")
+
 
 def generate_embedding(text: str) -> list[float]:
     """
@@ -14,7 +19,7 @@ def generate_embedding(text: str) -> list[float]:
     """
     if not text:
         return None
-    embedding = model.encode(text)
+    embedding = get_model().encode(text)
     norm = np.linalg.norm(embedding)
     if norm == 0:
         return embedding.tolist()

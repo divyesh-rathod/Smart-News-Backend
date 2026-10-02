@@ -2,15 +2,9 @@ import asyncio
 
 import pytest
 
+from app.ml_models.rerank import rerank_top_k
+
 pytestmark = pytest.mark.model
-
-
-@pytest.fixture
-def rerank_top_k():
-    # rerank.py loads the cross-encoder at import time, so import it only when a model test runs.
-    from app.ml_models.rerank import rerank_top_k
-
-    return rerank_top_k
 
 
 def make_candidate(article_id: str, text: str | None) -> dict:
@@ -25,7 +19,7 @@ def make_candidate(article_id: str, text: str | None) -> dict:
     }
 
 
-def test_rerank_ranks_the_matching_article_first_and_keeps_metadata(rerank_top_k):
+def test_rerank_ranks_the_matching_article_first_and_keeps_metadata():
     query = "the central bank raised interest rates to fight inflation"
     candidates = [
         make_candidate("cake", "a recipe for lemon cake with vanilla icing"),
@@ -45,7 +39,7 @@ def test_rerank_ranks_the_matching_article_first_and_keeps_metadata(rerank_top_k
     }
 
 
-def test_rerank_treats_missing_text_as_empty_string(rerank_top_k):
+def test_rerank_treats_missing_text_as_empty_string():
     candidates = [make_candidate("empty", None), make_candidate("full", "interest rates rose")]
 
     result = asyncio.run(rerank_top_k("interest rates", candidates, top_n=5))
