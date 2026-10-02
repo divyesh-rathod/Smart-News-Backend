@@ -7,6 +7,8 @@ import pytest
 # always overridden: tests marked "db" get TEST_DATABASE_URL, and the rest never connect.
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL or "postgresql+asyncpg://test:test@localhost:5432/test"
+# The API refuses to start with a placeholder key, and CI has no .env.
+os.environ["SECRET_KEY"] = "pytest-only-secret-key-0123456789abcdef"
 
 from sqlalchemy import text  # noqa: E402
 from sqlalchemy.ext.asyncio import create_async_engine  # noqa: E402

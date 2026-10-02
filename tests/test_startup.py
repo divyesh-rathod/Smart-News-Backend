@@ -1,9 +1,23 @@
 import logging
 
+import pytest
 from fastapi.testclient import TestClient
 
+from app.config import settings
 from app.main import app
 from app.ml_models import rerank
+
+
+@pytest.mark.parametrize("secret_key", ["your-default-secret", "your_secret_key_here", "short-but-not-a-placeholder"])
+def test_startup_refuses_a_secret_key_that_would_let_anyone_forge_tokens(monkeypatch, secret_key):
+    loads = []
+    monkeypatch.setattr(rerank, "get_model", lambda: loads.append("loaded"))
+    monkeypatch.setattr(settings, "SECRET_KEY", secret_key)
+
+    with pytest.raises(RuntimeError, match="SECRET_KEY"):
+        with TestClient(app):
+            pass
+    assert loads == []
 
 
 def test_startup_loads_the_cross_encoder_before_serving(monkeypatch):

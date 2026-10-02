@@ -43,3 +43,16 @@ class Settings(BaseSettings):
 
 # Instantiate the settings object which will be used throughout your app:
 settings = Settings()
+
+# Keys that must never sign real tokens: the default above and the .env.example placeholder.
+PLACEHOLDER_SECRET_KEYS = {"your-default-secret", "your_secret_key_here"}
+MIN_SECRET_KEY_LENGTH = 32
+
+
+def secret_key_problem(secret_key: str) -> str | None:
+    """Why `secret_key` is unsafe for signing JWTs, or None if it's fine."""
+    if secret_key in PLACEHOLDER_SECRET_KEYS:
+        return "is a placeholder"
+    if len(secret_key) < MIN_SECRET_KEY_LENGTH:
+        return f"is shorter than {MIN_SECRET_KEY_LENGTH} characters"
+    return None

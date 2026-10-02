@@ -7,12 +7,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .api import api_router
-from .config import settings
+from .config import secret_key_problem, settings
 from .ml_models import rerank
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if problem := secret_key_problem(settings.SECRET_KEY):
+        raise RuntimeError(
+            f"Refusing to start: SECRET_KEY {problem}, so anyone could forge login tokens. "
+            'Set it in .env; generate one with: python -c "import secrets; print(secrets.token_urlsafe(32))"'
+        )
     # uvicorn only configures its own loggers; without this, app logs below WARNING are dropped.
     logging.basicConfig(level=settings.LOG_LEVEL, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     # Hugging Face's update checks would log every HTTP request at INFO.
