@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      # The CPU index serves torch 2.14.1+cpu, so pip skips PyPI's multi-GB CUDA build.
+      - run: pip install -r requirements-dev.txt --extra-index-url https://download.pytorch.org/whl/cpu
+
+      - run: ruff check .
+
+      # Tests marked "model" download Hugging Face weights, so CI skips them.
+      - run: pytest -m "not model"
