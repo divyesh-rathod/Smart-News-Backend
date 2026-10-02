@@ -44,6 +44,8 @@ def score_pairs(
     model: PreTrainedModel,
     pairs: list[list[str]],
     batch_size: int = BATCH_SIZE,
+    max_length: int = MAX_LENGTH,
+    truncation: bool | str = True,
 ) -> list[float]:
     """Cross-encoder score for each [query, text] pair, in input order."""
     # Batches of similar length pad less than one batch padded to the longest pair.
@@ -55,8 +57,8 @@ def score_pairs(
             inputs = tokenizer(
                 [pairs[i] for i in batch],
                 padding=True,
-                truncation=True,
-                max_length=MAX_LENGTH,
+                truncation=truncation,
+                max_length=max_length,
                 return_tensors="pt",
             ).to(model.device)
             logits = model(**inputs).logits
