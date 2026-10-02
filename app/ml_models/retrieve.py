@@ -1,5 +1,6 @@
 # app/services/similarity_service.py
 
+import logging
 from typing import List, Tuple
 
 from sqlalchemy import Float, asc
@@ -9,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import AsyncSessionLocal
 from app.db.models.processed_article import ProcessedArticle, Article
 from app.ml_models.rerank import rerank_top_k
+
+logger = logging.getLogger(__name__)
 
 async def get_top_50_cosine_similar_articles(
     session: AsyncSession,
@@ -50,9 +53,7 @@ async def get_top_50_cosine_similar_articles(
     )
     results = await session.execute(stmt)
     results = results.all()
-    if results:
-        print(f"DEBUG: First result format: {len(results[0])} values")
-        print(f"DEBUG: First result: {results[0]}")
+    logger.debug("Stage 1 returned %d candidates for article %s", len(results), article_id)
     return results
 
 
@@ -60,9 +61,6 @@ async def main(article_id: str = None):
     async with AsyncSessionLocal() as session:
         # 1) Get top-50 by vector distance
         similar = await get_top_50_cosine_similar_articles(session, article_id)
-        print(f"DEBUG: Found {len(similar)} similar articles")
-        print(f"DEBUG: First similar article: {similar[0]}")
-        print("THis is Divyesh debugging")
 
         # 2) Rerank top-50 with cross-encoder
         #    Fetch the query text

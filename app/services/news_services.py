@@ -170,8 +170,6 @@ def serialize_article_scores(raw: list) -> list[ArticleScore]:
     results: list[ArticleScore] = []
     
     for row in raw:
-        print(f"DEBUG: serialize_article_scores row format: {len(row)} values")  # 🔍 Debug
-        
         if isinstance(row, dict):  # reranked result from rerank_top_k
             results.append(ArticleScore(
                 article_id=row['article_id'],

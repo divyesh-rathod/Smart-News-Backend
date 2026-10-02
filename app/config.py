@@ -29,10 +29,3 @@ class Settings(BaseSettings):
 
 # Instantiate the settings object which will be used throughout your app:
 settings = Settings()
-
-if __name__ == "__main__":
-    # For demonstration purposes: print out the configuration
-    print("DATABASE_URL:", settings.DATABASE_URL)
-    print("DEBUG:", settings.DEBUG)
-    print("APP_HOST:", settings.APP_HOST)
-    print("APP_PORT:", settings.APP_PORT)

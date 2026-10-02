@@ -1,6 +1,7 @@
 # app/scrapping/scraper.py
 
 import asyncio
+import logging
 
 import httpx
 from bs4 import BeautifulSoup
@@ -10,6 +11,8 @@ from email.utils import parsedate_to_datetime
 from datetime import datetime
 from app.db.session import AsyncSessionLocal
 from app.db.models.article import Article
+
+logger = logging.getLogger(__name__)
 
 RSS_ENDPOINTS = [
     "international", "football", "politics", "global-development",
@@ -68,11 +71,11 @@ async def store_articles_in_db(articles: list[dict]):
             result = await session.execute(select(Article.link))
             existing_links = {row[0] for row in result.all()}
 
-            c = 0
+            skipped = 0
             for art in articles:
                 link = art["link"]
                 if link in existing_links:
-                    c += 1
+                    skipped += 1
                     continue
 
                 new_article = Article(
@@ -86,11 +89,10 @@ async def store_articles_in_db(articles: list[dict]):
                 existing_links.add(link)
 
             await session.commit()
-            print("Articles successfully stored in the database.")
-            print(c)
-        except Exception as e:
+            logger.info("Stored %d new articles, skipped %d duplicates", len(articles) - skipped, skipped)
+        except Exception:
             await session.rollback()
-            print(f"Error storing articles: {e}")
+            logger.exception("Error storing articles")
 
 async def main():
     all_articles: list[dict] = []
@@ -99,11 +101,12 @@ async def main():
         try:
             soup = await fetch_rss_feed(url)
         except Exception as e:
-            print(f"Error fetching feed from {url}: {e}")
+            logger.warning("Error fetching feed from %s: %s", url, e)
             continue
         all_articles.extend(parse_rss_items(soup))
 
     await store_articles_in_db(all_articles)
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     asyncio.run(main())

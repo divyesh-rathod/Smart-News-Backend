@@ -2,6 +2,7 @@
 
 import re
 import asyncio
+import logging
 from bs4 import BeautifulSoup
 
 from sqlalchemy import select
@@ -9,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import AsyncSessionLocal
 from app.db.models.article import Article
 from app.db.models.processed_article import ProcessedArticle
+
+logger = logging.getLogger(__name__)
 
 
 def clean_text(text: str) -> str:
@@ -60,12 +63,13 @@ async def process_articles() -> None:
 
             # 2) Commit all changes
             await session.commit()
-            print(f"Processed {len(articles_to_process)} articles.")
-        except Exception as e:
+            logger.info("Processed %d articles", len(articles_to_process))
+        except Exception:
             await session.rollback()
-            print("Error processing articles:", e)
+            logger.exception("Error processing articles")
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     asyncio.run(process_articles())
 
