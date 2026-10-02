@@ -98,3 +98,6 @@ Thumbs.db
 # ---- Temporary files ----
 *.tmp
 *.temp
+
+# ---- Local notes (never commit) ----
+NOTES_LOCAL.md
