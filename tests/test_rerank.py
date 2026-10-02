@@ -1,10 +1,10 @@
 import asyncio
+import random
 
 import pytest
+import torch
 
-from app.ml_models.rerank import rerank_top_k
-
-pytestmark = pytest.mark.model
+from app.ml_models.rerank import get_model, rerank_top_k, score_pairs
 
 
 def make_candidate(article_id: str, text: str | None) -> dict:
@@ -19,6 +19,58 @@ def make_candidate(article_id: str, text: str | None) -> dict:
     }
 
 
+class FakeEncoding(dict):
+    def to(self, device):
+        return self
+
+
+class FakeTokenizer:
+    """Records each batch; the 'encoding' is just the candidate text lengths."""
+
+    def __init__(self):
+        self.batches = []
+
+    def __call__(self, pairs, **kwargs):
+        self.batches.append(pairs)
+        return FakeEncoding(lengths=torch.tensor([[float(len(text))] for _, text in pairs]))
+
+
+class FakeModel:
+    """Scores a pair by the length of its candidate text."""
+
+    device = "cpu"
+
+    def __call__(self, lengths):
+        return type("Output", (), {"logits": lengths})()
+
+
+def test_score_pairs_keeps_input_order_across_length_sorted_batches():
+    lengths = list(range(1, 41))
+    random.Random(0).shuffle(lengths)
+    pairs = [["query", "x" * n] for n in lengths]
+    tokenizer = FakeTokenizer()
+
+    scores = score_pairs(tokenizer, FakeModel(), pairs, batch_size=16)
+
+    assert scores == [float(n) for n in lengths]
+    assert [len(batch) for batch in tokenizer.batches] == [16, 16, 8]
+    batch_lengths = [[len(text) for _, text in batch] for batch in tokenizer.batches]
+    assert batch_lengths == [list(range(1, 17)), list(range(17, 33)), list(range(33, 41))]
+
+
+@pytest.mark.model
+def test_length_sorted_batches_score_the_same_as_one_batch():
+    tokenizer, model = get_model()
+    texts = ["rates rose", "a recipe for lemon cake " * 30, "the striker signed", "inflation " * 120] * 5
+    pairs = [["the central bank raised interest rates", text] for text in texts]
+
+    batched = score_pairs(tokenizer, model, pairs, batch_size=4)
+    single = score_pairs(tokenizer, model, pairs, batch_size=len(pairs))
+
+    assert batched == pytest.approx(single, abs=1e-4)
+
+
+@pytest.mark.model
 def test_rerank_ranks_the_matching_article_first_and_keeps_metadata():
     query = "the central bank raised interest rates to fight inflation"
     candidates = [
@@ -39,6 +91,7 @@ def test_rerank_ranks_the_matching_article_first_and_keeps_metadata():
     }
 
 
+@pytest.mark.model
 def test_rerank_treats_missing_text_as_empty_string():
     candidates = [make_candidate("empty", None), make_candidate("full", "interest rates rose")]
 

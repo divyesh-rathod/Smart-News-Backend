@@ -20,6 +20,11 @@ class Settings(BaseSettings):
 
     # Shared secret for admin-only endpoints (sent as X-Admin-Token). Unset or empty disables them.
     ADMIN_API_KEY: str | None = Field(None, env="ADMIN_API_KEY")
+
+    # Cross-encoder runtime. MODEL_DEVICE is a torch device ("cpu", "cuda", "mps").
+    # TORCH_NUM_THREADS unset keeps torch's default; lower it when several workers share a machine.
+    MODEL_DEVICE: str = Field("cpu", env="MODEL_DEVICE")
+    TORCH_NUM_THREADS: int | None = Field(None, env="TORCH_NUM_THREADS")
     
     # Additional settings can be added here:
     # For instance, port, host settings, API version, etc.
